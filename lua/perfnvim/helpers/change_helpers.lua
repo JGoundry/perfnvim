@@ -75,7 +75,20 @@ end
 
 function M._AnnotateSigns()
 	local file_path = vim.fn.expand("%:p")
+	-- Run "p4 diff" from the file's own directory and pass just the file name, rather than an
+	-- absolute path. The client root may be reached through a symlink (e.g. an AltRoot), in which
+	-- case %:p resolves to the symlink *target* and p4 rejects it with "not under client's root".
+	-- Running from the directory lets p4 resolve the path against the client mapping itself.
+	--
+	-- We must also set $PWD in the job env: jobstart's `cwd` changes the child's physical working
+	-- directory, but the child otherwise inherits $PWD from Neovim (wherever nvim was launched). p4
+	-- trusts $PWD over the real cwd both to resolve the relative file name and to locate the
+	-- P4CONFIG (.perforce) by walking up. A stale $PWD makes p4 pick the wrong client and report
+	-- "not under client's root" / "file(s) not opened on this client".
+	local file_dir = vim.fn.fnamemodify(file_path, ":h")
+	local file_name = vim.fn.fnamemodify(file_path, ":t")
 	local diff_output = {}
+	local err_output = {}
 
 	local function on_stdout(job_id, data, event)
 		if event == "stdout" and data then
@@ -85,8 +98,47 @@ function M._AnnotateSigns()
 		end
 	end
 
+	local function on_stderr(job_id, data, event)
+		if event == "stderr" and data then
+			for _, line in ipairs(data) do
+				if line ~= "" then
+					table.insert(err_output, line)
+				end
+			end
+		end
+	end
+
+	-- Not every stderr line is a real failure. p4 diff writes these to stderr for perfectly normal
+	-- files that simply have nothing to annotate; they must be silenced, not reported:
+	--   "<file> - file(s) not opened on this client."  -- tracked but not open for edit
+	--   "Path '...' is not under client's root ..."     -- file outside the client (non-p4 files)
+	--   "<file> - no such file(s)."                     -- not in the depot
+	local function _IsBenignStderr(line)
+		return line:find("file%(s%) not opened on this client")
+			or line:find("is not under client's root")
+			or line:find("no such file%(s%)")
+			or line:find("file%(s%) not on client")
+	end
+
 	local function on_exit(job_id, exit_code, event)
 		if event == "exit" then
+			local real_errors = {}
+			for _, line in ipairs(err_output) do
+				if not _IsBenignStderr(line) then
+					table.insert(real_errors, line)
+				end
+			end
+			if #real_errors > 0 then
+				vim.schedule(function()
+					vim.notify(
+						"perfnvim: p4 diff failed for " .. file_path .. "\n" .. table.concat(real_errors, "\n"),
+						vim.log.levels.WARN
+					)
+				end)
+				return
+			end
+			-- Benign stderr (or none) means there is nothing to annotate; an empty diff still runs
+			-- through the annotate helpers, which clears any stale signs from the buffer.
 			local lines = vim.split(table.concat(diff_output, "\n"), "\n")
 			M._AnnotateAddedLines(lines, file_path)
 			M._AnnotateChangedLines(lines, file_path)
@@ -94,10 +146,14 @@ function M._AnnotateSigns()
 		end
 	end
 
-	vim.fn.jobstart("p4 diff " .. file_path, {
+	vim.fn.jobstart({ "p4", "diff", file_name }, {
+		cwd = file_dir,
+		env = { PWD = file_dir },
 		on_stdout = on_stdout,
+		on_stderr = on_stderr,
 		on_exit = on_exit,
 		stdout_buffered = true,
+		stderr_buffered = true,
 	})
 end
 
