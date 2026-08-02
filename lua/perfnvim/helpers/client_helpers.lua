@@ -1,6 +1,18 @@
 local M = {}
 
+-- Cache the p4 info output so _GetClientRoot/Name/Stream don't
+-- each fire a separate blocking io.popen("p4 info") call.
+-- Invalidation: call M._InvalidateInfo() when the workspace changes.
+local cached_info = nil
+
+function M._InvalidateInfo()
+	cached_info = nil
+end
+
 function M._GetP4Info()
+	if cached_info then
+		return cached_info
+	end
 	-- Execute the 'p4 info' command and capture the output
 	local handle = io.popen("p4 info")
 	if not handle then
@@ -9,6 +21,7 @@ function M._GetP4Info()
 	end
 	local result = handle:read("*a")
 	handle:close()
+	cached_info = result
 	return result
 end
 
