@@ -243,4 +243,391 @@ function M.GoToNextChange()
 	end
 end
 
+----------------------------------------------------------------------
+-- Phase 4: Complete p4 lifecycle commands
+----------------------------------------------------------------------
+
+--- Revert current buffer. Confirms before reverting.
+function M.Revert()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	local ui = require("perfnvim.ui")
+	ui.confirm("Revert " .. vim.fn.fnamemodify(filepath, ":t") .. "?", {
+		on_confirm = function()
+			executor.run({ "revert", filepath }, {
+				label = "revert",
+				on_exit = function(ec, _, serr)
+					if ec == 0 then
+						notify.info("Reverted: " .. filepath)
+						vim.cmd("edit!") -- reload buffer
+					else
+						notify.error(table.concat(serr, "\n"), executor.classify(serr))
+					end
+				end,
+			})
+		end,
+	})
+end
+
+--- Revert all unchanged files in the workspace.
+function M.RevertUnchanged()
+	local ui = require("perfnvim.ui")
+	ui.confirm("Revert all unchanged files in this workspace?", {
+		on_confirm = function()
+			executor.run({ "revert", "-a" }, {
+				label = "revert-unchanged",
+				on_exit = function(ec, stdout, serr)
+					if ec == 0 then
+						local count = 0
+						for _, line in ipairs(stdout) do
+							if line:match("reverted") then count = count + 1 end
+						end
+						notify.info("Reverted " .. count .. " unchanged file(s)")
+					else
+						notify.error(table.concat(serr, "\n"), executor.classify(serr))
+					end
+				end,
+			})
+		end,
+	})
+end
+
+--- Mark current buffer for deletion.
+function M.Delete()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	local ui = require("perfnvim.ui")
+	ui.confirm("Mark " .. vim.fn.fnamemodify(filepath, ":t") .. " for deletion?", {
+		on_confirm = function()
+			executor.run({ "delete", filepath }, {
+				label = "delete",
+				on_exit = function(ec, _, serr)
+					if ec == 0 then
+						notify.info("Marked for deletion: " .. filepath)
+					else
+						notify.error(table.concat(serr, "\n"), executor.classify(serr))
+					end
+				end,
+			})
+		end,
+	})
+end
+
+--- Submit a changelist. Opens a Telescope picker of pending CLs,
+--- then shows a diff summary before confirming submit.
+function M.Submit()
+	local client = client_helpers._GetClientName()
+	if not client then
+		notify.error("P4 client not detected")
+		return
+	end
+
+	executor.run({ "changelists", "-s", "pending", "-u", client_helpers._GetClientName() or "" }, {
+		label = "submit-list",
+		on_exit = function(ec, stdout, serr)
+			if ec ~= 0 then
+				notify.error(table.concat(serr, "\n"), executor.classify(serr))
+				return
+			end
+
+			local cl_list = {}
+			for _, line in ipairs(stdout) do
+				local num = line:match("Change (%d+)")
+				if num then
+					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
+					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
+				end
+			end
+
+			if #cl_list == 0 then
+				notify.info("No pending changelists to submit")
+				return
+			end
+
+			local items = {}
+			for _, cl in ipairs(cl_list) do
+				table.insert(items, cl.display)
+			end
+
+			local ui = require("perfnvim.ui")
+			ui.select_list(items, {
+				prompt = "Submit Changelist",
+				max_height = 12,
+				on_select = function(idx)
+					local cl = cl_list[idx]
+					if not cl then return end
+
+					ui.confirm("Submit Change " .. cl.number .. "?\n" .. cl.display, {
+						on_confirm = function()
+							executor.run({ "submit", "-c", cl.number }, {
+								label = "submit",
+								on_exit = function(sec, sout, serr2)
+									if sec == 0 then
+										notify.info("Submitted: Change " .. cl.number)
+									else
+										notify.error(table.concat(serr2, "\n"), executor.classify(serr2))
+									end
+								end,
+							})
+						end,
+					})
+				end,
+			})
+		end,
+	})
+end
+
+--- Show diff of current buffer vs have-revision in a split.
+function M.Diff()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	local file_dir = vim.fn.fnamemodify(filepath, ":h")
+	local file_name = vim.fn.fnamemodify(filepath, ":t")
+
+	vim.cmd("vsplit")
+	vim.cmd("enew")
+	local diff_buf = vim.api.nvim_get_current_buf()
+
+	vim.fn.jobstart({ "p4", "diff", file_name }, {
+		cwd = file_dir,
+		env = { PWD = file_dir },
+		stdout_buffered = true,
+		stderr_buffered = true,
+		on_stdout = function(_, data, _)
+			if data then
+				vim.schedule(function()
+					vim.api.nvim_buf_set_lines(diff_buf, -1, -1, false, data)
+				end)
+			end
+		end,
+		on_exit = function()
+			vim.schedule(function()
+				vim.api.nvim_buf_set_option(diff_buf, "filetype", "diff")
+				vim.api.nvim_buf_set_option(diff_buf, "modified", false)
+			end)
+		end,
+	})
+end
+
+--- Describe a changelist (Telescope picker of pending CLs, shows details).
+function M.Describe()
+	local client = client_helpers._GetClientName()
+	if not client then
+		notify.error("P4 client not detected")
+		return
+	end
+
+	executor.run({ "changelists", "-s", "pending", "-u", client_helpers._GetClientName() or "" }, {
+		label = "describe-list",
+		on_exit = function(ec, stdout, serr)
+			if ec ~= 0 then
+				notify.error(table.concat(serr, "\n"), executor.classify(serr))
+				return
+			end
+
+			local cl_list = {}
+			for _, line in ipairs(stdout) do
+				local num = line:match("Change (%d+)")
+				if num then
+					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
+					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
+				end
+			end
+
+			if #cl_list == 0 then
+				notify.info("No pending changelists")
+				return
+			end
+
+			local items = {}
+			for _, cl in ipairs(cl_list) do
+				table.insert(items, cl.display)
+			end
+
+			local ui = require("perfnvim.ui")
+			ui.select_list(items, {
+				prompt = "Describe Changelist",
+				max_height = 12,
+				on_select = function(idx)
+					local cl = cl_list[idx]
+					if not cl then return end
+
+					vim.cmd("vsplit")
+					vim.cmd("enew")
+					local buf = vim.api.nvim_get_current_buf()
+
+					vim.fn.jobstart({ "p4", "describe", "-s", cl.number }, {
+						stdout_buffered = true,
+						on_stdout = function(_, data, _)
+							if data then
+								vim.schedule(function()
+									vim.api.nvim_buf_set_lines(buf, -1, -1, false, data)
+								end)
+							end
+						end,
+						on_exit = function()
+							vim.schedule(function()
+								vim.api.nvim_buf_set_option(buf, "filetype", "text")
+								vim.api.nvim_buf_set_option(buf, "modified", false)
+							end)
+						end,
+					})
+				end,
+			})
+		end,
+	})
+end
+
+--- Sync current file to head revision.
+function M.Sync()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	executor.run({ "sync", filepath }, {
+		label = "sync",
+		on_exit = function(ec, stdout, serr)
+			if ec == 0 then
+				notify.info("Synced: " .. filepath)
+				vim.cmd("edit!")
+			else
+				notify.error(table.concat(serr, "\n"), executor.classify(serr))
+			end
+		end,
+	})
+end
+
+--- Annotate (blame) current file. Opens in a vertical split.
+function M.Annotate()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	vim.cmd("vsplit")
+	vim.cmd("enew")
+	local buf = vim.api.nvim_get_current_buf()
+
+	vim.fn.jobstart({ "p4", "annotate", "-c", filepath }, {
+		stdout_buffered = true,
+		on_stdout = function(_, data, _)
+			if data then
+				vim.schedule(function()
+					vim.api.nvim_buf_set_lines(buf, -1, -1, false, data)
+				end)
+			end
+		end,
+		on_exit = function()
+			vim.schedule(function()
+				vim.api.nvim_buf_set_option(buf, "filetype", "text")
+				vim.api.nvim_buf_set_option(buf, "modified", false)
+			end)
+		end,
+	})
+end
+
+--- Shelve current changelist.
+function M.Shelve()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	if filepath == "" then
+		notify.warn("No file in current buffer")
+		return
+	end
+
+	local ui = require("perfnvim.ui")
+	ui.confirm("Shelve changes for " .. vim.fn.fnamemodify(filepath, ":t") .. "?", {
+		on_confirm = function()
+			executor.run({ "shelve", "-f", filepath }, {
+				label = "shelve",
+				on_exit = function(ec, _, serr)
+					if ec == 0 then
+						notify.info("Shelved: " .. filepath)
+					else
+						notify.error(table.concat(serr, "\n"), executor.classify(serr))
+					end
+				end,
+			})
+		end,
+	})
+end
+
+--- Unshelve a changelist.
+function M.Unshelve()
+	local client = client_helpers._GetClientName()
+	if not client then
+		notify.error("P4 client not detected")
+		return
+	end
+
+	-- List shelved changelists
+	executor.run({ "changelists", "-s", "shelved", "-u", client_helpers._GetClientName() or "" }, {
+		label = "unshelve-list",
+		on_exit = function(ec, stdout, serr)
+			if ec ~= 0 then
+				notify.error(table.concat(serr, "\n"), executor.classify(serr))
+				return
+			end
+
+			local cl_list = {}
+			for _, line in ipairs(stdout) do
+				local num = line:match("Change (%d+)")
+				if num then
+					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
+					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
+				end
+			end
+
+			if #cl_list == 0 then
+				notify.info("No shelved changelists found")
+				return
+			end
+
+			local items = {}
+			for _, cl in ipairs(cl_list) do
+				table.insert(items, cl.display)
+			end
+
+			local ui = require("perfnvim.ui")
+			ui.select_list(items, {
+				prompt = "Unshelve Changelist",
+				max_height = 12,
+				on_select = function(idx)
+					local cl = cl_list[idx]
+					if not cl then return end
+
+					ui.confirm("Unshelve Change " .. cl.number .. "?", {
+						on_confirm = function()
+							executor.run({ "unshelve", "-s", cl.number }, {
+								label = "unshelve",
+								on_exit = function(sec, _, serr2)
+									if sec == 0 then
+										notify.info("Unshelved Change " .. cl.number)
+									else
+										notify.error(table.concat(serr2, "\n"), executor.classify(serr2))
+									end
+								end,
+							})
+						end,
+					})
+				end,
+			})
+		end,
+	})
+end
+
 return M
