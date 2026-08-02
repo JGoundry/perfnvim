@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>The Perforce plugin for Neovim.</b><br>
-  <em>Gutter signs, changelist management, Telescope integration — no dependencies beyond Telescope.</em>
+  <em>17 commands, gutter signs, changelist management, Telescope — zero deps beyond Telescope.</em>
 </p>
 
 <p align="center">
@@ -15,47 +15,78 @@
 ---
 
 > **Note:** This is a fork of [guillemaru/perfnvim](https://github.com/guillemaru/perfnvim),
-> under active development with the goal of becoming the definitive Perforce plugin for
-> Neovim. See [docs/architecture.md](docs/architecture.md) for the full audit and roadmap.
+> under active development. See [docs/architecture.md](docs/architecture.md) for the
+> full audit, module layout, and design constraints.
 
 ## Features
 
-| Feature | Status |
+| Feature | |
 |---|---|
-| Gutter signs for added, changed, and deleted lines | ✅ Done |
-| Jump between changed lines (`]h` / `[h` style) | ✅ Done |
-| Add / edit current buffer to a changelist | ✅ Done |
-| New changelist creation with inline description | ✅ Done |
-| Telescope picker: checked-out files | ✅ Done |
-| Telescope picker: grep across checked-out files (`rg`) | ✅ Done |
-| Cross-platform bat/batcat previewer probe | ✅ Done |
-| Symlink / AltRoot-aware (`p4 diff` works from file directory) | ✅ Done |
-| `p4 info` result caching (3x fewer blocking calls on picker open) | ✅ Done |
-| P4CONFIG auto-detection (walk up, no manual setup) | ✅ Done |
-| `:checkhealth perfnvim` diagnostics (8 checks) | ✅ Done |
-| Configurable `setup()` with user option merging | ✅ Done |
-| Zero blocking calls (all `p4` async via executor) | ✅ Done |
-| Revert / delete / submit / diff / describe | 🔜 Phase 4 |
-| Sync / annotate (blame) / shelve–unshelve | 🔜 Phase 3–4 |
-| Customizable sign colours and debounce | 🔜 Phase 3 |
+| Gutter signs (add `+`, change `~`, delete `_`) | ✅ |
+| Jump between changed lines (`P4next` / `P4prev`) | ✅ |
+| P4CONFIG auto-detection — walks up from working directory | ✅ |
+| `:checkhealth perfnvim` — 8 diagnostic checks with actionable fixes | ✅ |
+| `setup()` with configurable defaults (sign colours, debounce, popups) | ✅ |
+| Asynchronous — zero blocking `p4` calls (`vim.fn.jobstart`) | ✅ |
+| Error classification (ticket expiry, connection, client errors) | ✅ |
+| Debounced sign annotation (200ms after save, no flicker) | ✅ |
+| Buffer lifecycle cleanup (cancel jobs/timers on `BufDelete`) | ✅ |
+| Cross-platform bat/batcat previewer probe | ✅ |
+| Symlink / AltRoot-aware (`p4 diff` from file directory) | ✅ |
+
+**Commands:**
+
+| Command | Key | |
+|---|---|---|
+| `P4add` | `<leader>pa` | `p4 add` → changelist picker |
+| `P4edit` | `<leader>pe` | `p4 edit` → changelist picker |
+| `P4revert` | `<leader>pr` | Revert buffer (with confirmation) |
+| `P4revertunchanged` | `<leader>pR` | Revert all unchanged files |
+| `P4delete` | `<leader>pd` | Mark for deletion (with confirmation) |
+| `P4submit` | `<leader>ps` | Pick CL → confirm → submit |
+| `P4diff` | `<leader>pD` | Diff vs have-revision (vsplit) |
+| `P4describe` | `<leader>pC` | Pick CL → show details |
+| `P4sync` | `<leader>pS` | Sync to head, reload |
+| `P4annotate` | `<leader>pb` | Blame (vsplit) |
+| `P4shelve` | `<leader>ph` | Shelve current file |
+| `P4unshelve` | `<leader>pH` | Pick shelved CL → unshelve |
+| `P4login` | `<leader>pl` | `p4 login` (password prompt) |
+| `P4opened` | `<leader>po` | Telescope: checked-out files |
+| `P4grep` | `<leader>pg` | Telescope: grep checked-out files |
+| `P4next` | `<leader>pn` | Jump to next changed line |
+| `P4prev` | `<leader>pp` | Jump to previous changed line |
+
+Gutter signs appear automatically on `BufReadPost` and `BufWritePost`.
 
 ## Installation
 
-Requires Neovim ≥ 0.7 and the `p4` CLI in PATH.
-
-### lazy.nvim
+Requires Neovim ≥ 0.7, `p4` CLI, and [Telescope](https://github.com/nvim-telescope/telescope.nvim).
 
 ```lua
 {
     "JGoundry/perfnvim",
-    cmd = { "P4add", "P4edit", "P4opened", "P4grep", "P4next", "P4prev" },
+    cmd = { "P4add", "P4edit", "P4revert", "P4revertunchanged", "P4delete",
+            "P4submit", "P4diff", "P4describe", "P4sync", "P4annotate",
+            "P4shelve", "P4unshelve", "P4login", "P4opened", "P4grep",
+            "P4next", "P4prev" },
     keys = {
-        { "<leader>pa", function() require("perfnvim").P4add() end,   desc = "P4 add current buffer" },
-        { "<leader>pe", function() require("perfnvim").P4edit() end,  desc = "P4 edit current buffer" },
-        { "<leader>po", function() require("perfnvim").P4opened() end, desc = "P4 opened (telescope)" },
-        { "<leader>pg", function() require("perfnvim").P4grep() end,  desc = "Grep checked-out files" },
-        { "<leader>pn", function() require("perfnvim").P4next() end,  desc = "Next changed line" },
-        { "<leader>pp", function() require("perfnvim").P4prev() end,  desc = "Previous changed line" },
+        { "<leader>pa", function() require("perfnvim").P4add() end, desc = "P4 add" },
+        { "<leader>pe", function() require("perfnvim").P4edit() end, desc = "P4 edit" },
+        { "<leader>pr", function() require("perfnvim").P4revert() end, desc = "P4 revert" },
+        { "<leader>pR", function() require("perfnvim").P4revertunchanged() end, desc = "P4 revert unchanged" },
+        { "<leader>pd", function() require("perfnvim").P4delete() end, desc = "P4 delete" },
+        { "<leader>ps", function() require("perfnvim").P4submit() end, desc = "P4 submit" },
+        { "<leader>pD", function() require("perfnvim").P4diff() end, desc = "P4 diff" },
+        { "<leader>pC", function() require("perfnvim").P4describe() end, desc = "P4 describe" },
+        { "<leader>pS", function() require("perfnvim").P4sync() end, desc = "P4 sync" },
+        { "<leader>pb", function() require("perfnvim").P4annotate() end, desc = "P4 annotate" },
+        { "<leader>ph", function() require("perfnvim").P4shelve() end, desc = "P4 shelve" },
+        { "<leader>pH", function() require("perfnvim").P4unshelve() end, desc = "P4 unshelve" },
+        { "<leader>pl", function() require("perfnvim").P4login() end, desc = "P4 login" },
+        { "<leader>po", function() require("perfnvim").P4opened() end, desc = "P4 opened" },
+        { "<leader>pg", function() require("perfnvim").P4grep() end, desc = "P4 grep" },
+        { "<leader>pn", function() require("perfnvim").P4next() end, desc = "Next change" },
+        { "<leader>pp", function() require("perfnvim").P4prev() end, desc = "Previous change" },
     },
     config = function()
         require("perfnvim").setup()
@@ -63,66 +94,47 @@ Requires Neovim ≥ 0.7 and the `p4` CLI in PATH.
 }
 ```
 
-### vim-plug
+## Configuration
 
-```vim
-Plug 'JGoundry/perfnvim'
-
-lua << EOF
-require("perfnvim").setup()
-EOF
+```lua
+require("perfnvim").setup({
+    p4config_filename = nil,  -- override $P4CONFIG; nil = ".p4config"
+    signs = {
+        enabled = true,
+    },
+    ui = {
+        changelist_popup = {
+            border = "single",
+            max_height = 12,
+        },
+    },
+})
 ```
 
-## Keybindings
+## Architecture
 
-| Key | Action |
-|---|---|
-| `<leader>pa` | `p4 add` current buffer (opens changelist picker) |
-| `<leader>pe` | `p4 edit` current buffer (opens changelist picker) |
-| `<leader>po` | Telescope picker of all checked-out files |
-| `<leader>pg` | Telescope grep across checked-out files |
-| `<leader>pn` | Jump to next changed line |
-| `<leader>pp` | Jump to previous changed line |
-
-Gutter signs appear automatically on `BufReadPost` and `BufWritePost` — no keybinding needed.
-
-## Roadmap
-
-| Phase | What | Status |
+| Module | Lines | Concern |
 |---|---|---|
-| 0 | Fork, audit, fix critical bugs (batcat, globals, shell pipeline) | ✅ Done |
-| 1 | P4CONFIG auto-detection, `:checkhealth`, configurable setup | ✅ Done |
-| 2 | Async executor — zero blocking `p4` calls | ✅ Done |
-| 3 | State management, sign debouncing, p4 info cache | 🔜 |
-| 4 | Complete p4 lifecycle: revert, delete, submit, diff, sync, annotate, shelve | 🔜 |
-| 5 | UX polish: confirmation dialogs, notifications, error recovery | 🔜 |
-| 6 | Documentation, README, which-key verification | 🔜 |
-
-Full details in [docs/architecture.md](docs/architecture.md).
-
-## Demos
-
-<p align="center">
-  <img src="./perfnvim1.gif" width="600" alt="Add current buffer to Perforce"/>
-  <br><em>Add current buffer to a changelist</em>
-</p>
-
-<p align="center">
-  <img src="./perfnvim2.gif" width="600" alt="View checked-out files with Telescope"/>
-  <br><em>Browse checked-out files with Telescope</em>
-</p>
-
-<p align="center">
-  <img src="./perfnvim3.gif" width="600" alt="Gutter signs"/>
-  <br><em>Gutter signs for added/changed/deleted lines</em>
-</p>
+| `init.lua` | 63 | Public API + user command registration |
+| `setup.lua` | 90 | Config merging + autocmds + sign lifecycle |
+| `commands.lua` | 660 | Command dispatch (changelist, lifecycle, navigation) |
+| `executor.lua` | 170 | Async job runner (`jobstart`) + error classification |
+| `config.lua` | 256 | P4CONFIG walk/parse/merge/validate |
+| `health.lua` | 146 | `:checkhealth perfnvim` (8 diagnostics) |
+| `signs.lua` | 170 | Gutter signs with debouncing + `p4 diff` parser |
+| `pickers.lua` | 135 | Telescope pickers (opened + grep) |
+| `ui.lua` | 100 | Floating window utilities |
+| `notify.lua` | 50 | Standardised `vim.notify` wrapper |
+| `state.lua` | 65 | Centralised state + cache invalidation |
+| `constants.lua` | 30 | Sign names + config defaults |
+| `helpers/` | 4 files | Client info, file paths, diff parsing, utilities |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Copyright (c) 2024 Guillermo Marugan, (c) 2026 Josh Goundry.
 
 ## Contributing
 
 Issues and pull requests welcome. Before opening a PR, check
 [docs/architecture.md](docs/architecture.md) for the module layout and design
-constraints (zero dependencies beyond Telescope, all p4 calls async, pure Lua).
+constraints (zero dependencies beyond Telescope, all `p4` calls async, pure Lua).
