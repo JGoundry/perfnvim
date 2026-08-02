@@ -2,7 +2,7 @@ local setup = require("perfnvim.setup")
 local commands = require("perfnvim.commands")
 local M = {}
 
-function M.setup()
+function M.setup(opts)
     vim.api.nvim_create_user_command("P4add", function()
         commands.SelectChangelistInteractively("add")
     end, {})
@@ -21,7 +21,7 @@ function M.setup()
     vim.api.nvim_create_user_command("P4prev", function()
         commands.GoToPreviousChange()
     end, {})
-    setup.setup()
+    setup.setup(opts)
 end
 
 function M.P4add()
