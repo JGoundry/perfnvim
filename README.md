@@ -1,123 +1,126 @@
 <h1 align="center">PerfNvim</h1>
 
 <p align="center">
-  <b>Seamless Perforce integration for Neovim.</b><br>
-  Effortlessly manage your Perforce workflow without leaving your editor.
+  <b>The Perforce plugin for Neovim.</b><br>
+  <em>Gutter signs, changelist management, Telescope integration — no dependencies beyond Telescope.</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/guillemaru/perfnvim/stargazers"><img src="https://img.shields.io/github/stars/guillemaru/perfnvim?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/guillemaru/perfnvim/issues"><img src="https://img.shields.io/github/issues/guillemaru/perfnvim?style=flat-square" alt="Issues"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/guillemaru/perfnvim?style=flat-square" alt="License"></a>
+  <a href="https://github.com/JGoundry/perfnvim/stargazers"><img src="https://img.shields.io/github/stars/JGoundry/perfnvim?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/JGoundry/perfnvim/issues"><img src="https://img.shields.io/github/issues/JGoundry/perfnvim?style=flat-square" alt="Issues"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/JGoundry/perfnvim?style=flat-square" alt="License"></a>
+  <a href="https://github.com/guillemaru/perfnvim"><img src="https://img.shields.io/badge/forked%20from-guillemaru%2Fperfnvim-blue?style=flat-square" alt="Fork"></a>
 </p>
 
 ---
 
-## 🚀 Features
+> **Note:** This is a fork of [guillemaru/perfnvim](https://github.com/guillemaru/perfnvim),
+> under active development with the goal of becoming the definitive Perforce plugin for
+> Neovim. See [docs/architecture.md](docs/architecture.md) for the full audit and roadmap.
 
-- 📄 **Add** current buffer to Perforce (`p4 add`)
-- ✏️ **Edit** current buffer in Perforce (`p4 edit`)
-- 🗂️ **Choose** between existing changelists, the Default one, or create a new one on the spot
-- ♻️ **Revert** unchanged files
-- 🔍 **Signs** in changed lines
-- ⏩ **Navigate** between changed lines
-- 🗃️ **View** checked out files using Telescope
-- 🔎 **Grep** checked out files using Telescope
+## Features
 
----
-
-<p align="center">
-  <img src="./perfnvim1.gif" width="600" alt="Demo: Add current buffer to Perforce"/>
-  <br>
-  <em>Demo: Add current buffer to Perforce</em>
-</p>
-
-<p align="center">
-  <img src="./perfnvim2.gif" width="600" alt="Demo: View checked out files using Telescope"/>
-  <br>
-  <em>Demo: View checked out files using Telescope</em>
-</p>
-
-<p align="center">
-  <img src="./perfnvim3.gif" width="600" alt="Demo: Signs in changed lines"/>
-  <br>
-  <em>Demo: Signs in changed lines</em>
-</p>
-
----
-
-> ⭐ **Like PerfNvim?** Star this repo and share it with your fellow Neovim users!
+| Feature | Status |
+|---|---|
+| Gutter signs for added, changed, and deleted lines | ✅ Done |
+| Jump between changed lines (`]h` / `[h` style) | ✅ Done |
+| Add / edit current buffer to a changelist | ✅ Done |
+| New changelist creation with inline description | ✅ Done |
+| Telescope picker: checked-out files | ✅ Done |
+| Telescope picker: grep across checked-out files (`rg`) | ✅ Done |
+| Cross-platform bat/batcat previewer probe | ✅ Done |
+| Symlink / AltRoot-aware (`p4 diff` works from file directory) | ✅ Done |
+| P4CONFIG auto-detection (walk up, no manual setup) | 🔜 Phase 1 |
+| `:checkhealth perfnvim` diagnostics | 🔜 Phase 1 |
+| Zero blocking calls (all `p4` async) | 🔜 Phase 2 |
+| Revert / delete / submit / diff / describe | 🔜 Phase 3–4 |
+| Sync / annotate (blame) / shelve–unshelve | 🔜 Phase 3–4 |
+| Customizable sign colours and debounce | 🔜 Phase 3 |
 
 ## Installation
 
-### Using [lazy.nvim](https://github.com/folke/lazy.nvim)
-<details>
-  <summary>Add the following to your `init.lua` or equivalent configuration file:
-</summary>
+Requires Neovim ≥ 0.7 and the `p4` CLI in PATH.
 
-  ```lua
-  {
-      "guillemaru/perfnvim",
-      config = function()
-          require("perfnvim").setup()
+### lazy.nvim
 
-          vim.keymap.set("n", "<leader>pa", function() require("perfnvim").P4add() end, { noremap = true, silent = true, desc = "'p4 add' current buffer" })
-          vim.keymap.set("n", "<leader>pe", function() require("perfnvim").P4edit() end, { noremap = true, silent = true, desc = "'p4 edit' current buffer" })
-          vim.keymap.set("n", "<leader>pR", ":!p4 revert -a %<CR>", { noremap = true, silent = true, desc = "Revert if unchanged" })
-          vim.keymap.set("n", "<leader>pn", function() require("perfnvim").P4next() end, { noremap = true, silent = true, desc = "Jump to next changed line" })
-          vim.keymap.set("n", "<leader>pp", function() require("perfnvim").P4prev() end, { noremap = true, silent = true, desc = "Jump to previous changed line" })
-          vim.keymap.set("n", "<leader>po", function() require("perfnvim").P4opened() end, { noremap = true, silent = true, desc = "'p4 opened' (telescope)" })
-          vim.keymap.set("n", "<leader>pg", function() require("perfnvim").P4grep() end, { noremap = true, silent = true, desc = "grep p4 files" })
-      end
-  }
-  ```
-</details>
+```lua
+{
+    "JGoundry/perfnvim",
+    cmd = { "P4add", "P4edit", "P4opened", "P4grep", "P4next", "P4prev" },
+    keys = {
+        { "<leader>pa", function() require("perfnvim").P4add() end,   desc = "P4 add current buffer" },
+        { "<leader>pe", function() require("perfnvim").P4edit() end,  desc = "P4 edit current buffer" },
+        { "<leader>po", function() require("perfnvim").P4opened() end, desc = "P4 opened (telescope)" },
+        { "<leader>pg", function() require("perfnvim").P4grep() end,  desc = "Grep checked-out files" },
+        { "<leader>pn", function() require("perfnvim").P4next() end,  desc = "Next changed line" },
+        { "<leader>pp", function() require("perfnvim").P4prev() end,  desc = "Previous changed line" },
+    },
+    config = function()
+        require("perfnvim").setup()
+    end,
+}
+```
 
+### vim-plug
 
-### Using [vim-plug](https://github.com/junegunn/vim-plug)
-<details>
-  <summary>Add the following to your `init.vim` or `init.lua`:
-</summary>
+```vim
+Plug 'JGoundry/perfnvim'
 
-  ```vim
-  " If using init.vim
-  call plug#begin('~/.config/nvim/plugged')
+lua << EOF
+require("perfnvim").setup()
+EOF
+```
 
-  Plug 'guillemaru/perfnvim'
+## Keybindings
 
-  call plug#end()
+| Key | Action |
+|---|---|
+| `<leader>pa` | `p4 add` current buffer (opens changelist picker) |
+| `<leader>pe` | `p4 edit` current buffer (opens changelist picker) |
+| `<leader>po` | Telescope picker of all checked-out files |
+| `<leader>pg` | Telescope grep across checked-out files |
+| `<leader>pn` | Jump to next changed line |
+| `<leader>pp` | Jump to previous changed line |
 
-  lua << EOF
-  require("perfnvim").setup()
+Gutter signs appear automatically on `BufReadPost` and `BufWritePost` — no keybinding needed.
 
-  vim.keymap.set("n", "<leader>pa", function() require("perfnvim").P4add() end, { noremap = true, silent = true, desc = "'p4 add' current buffer" })
-  vim.keymap.set("n", "<leader>pe", function() require("perfnvim").P4edit() end, { noremap = true, silent = true, desc = "'p4 edit' current buffer" })
-  vim.keymap.set("n", "<leader>pR", ":!p4 revert -a %<CR>", { noremap = true, silent = true, desc = "Revert if unchanged" })
-  vim.keymap.set("n", "<leader>pn", function() require("perfnvim").P4next() end, { noremap = true, silent = true, desc = "Jump to next changed line" })
-  vim.keymap.set("n", "<leader>pp", function() require("perfnvim").P4prev() end, { noremap = true, silent = true, desc = "Jump to previous changed line" })
-  vim.keymap.set("n", "<leader>po", function() require("perfnvim").P4opened() end, { noremap = true, silent = true, desc = "'p4 opened' (telescope)" })
-  vim.keymap.set("n", "<leader>pg", function() require("perfnvim").P4grep() end, { noremap = true, silent = true, desc = "grep p4 files" })
-  EOF
-  ```
-</details>
+## Roadmap
 
-## Recommended Key Mappings
+| Phase | What | Status |
+|---|---|---|
+| 0 | Fork, audit, fix critical bugs (batcat, globals, shell pipeline) | ✅ Done |
+| 1 | P4CONFIG auto-detection, `:checkhealth` | 🔜 |
+| 2 | Async executor — zero blocking `p4` calls | 🔜 |
+| 3 | State management, sign debouncing, p4 info cache | 🔜 |
+| 4 | Complete p4 lifecycle: revert, delete, submit, diff, sync, annotate, shelve | 🔜 |
+| 5 | UX polish: confirmation dialogs, notifications, error recovery | 🔜 |
+| 6 | Documentation, README, which-key verification | 🔜 |
 
-- `<leader>pa`: `'p4 add'` current buffer
-- `<leader>pe`: `'p4 edit'` current buffer
-- `<leader>pR`: Revert if unchanged
-- `<leader>pn`: Jump to next changed line
-- `<leader>pp`: Jump to previous changed line
-- `<leader>po`: `'p4 opened'` (telescope)
-- `<leader>pg`: grep p4 files (telescope)
+Full details in [docs/architecture.md](docs/architecture.md).
 
-These key mappings are designed to enhance your workflow by providing quick access to common Perforce commands. Feel free to customize them to your liking.
+## Demos
+
+<p align="center">
+  <img src="./perfnvim1.gif" width="600" alt="Add current buffer to Perforce"/>
+  <br><em>Add current buffer to a changelist</em>
+</p>
+
+<p align="center">
+  <img src="./perfnvim2.gif" width="600" alt="View checked-out files with Telescope"/>
+  <br><em>Browse checked-out files with Telescope</em>
+</p>
+
+<p align="center">
+  <img src="./perfnvim3.gif" width="600" alt="Gutter signs"/>
+  <br><em>Gutter signs for added/changed/deleted lines</em>
+</p>
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions are welcome! Please feel free to open issues or submit pull requests.
-
+Issues and pull requests welcome. Before opening a PR, check
+[docs/architecture.md](docs/architecture.md) for the module layout and design
+constraints (zero dependencies beyond Telescope, all p4 calls async, pure Lua).
