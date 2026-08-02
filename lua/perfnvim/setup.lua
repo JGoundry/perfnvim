@@ -1,32 +1,77 @@
 -- lua/perfnvim/setup.lua
+-- Plugin setup: highlight groups, autocmds, sign definitions, and user config merging.
 
 local constants = require("perfnvim.constants")
 local change_helpers = require("perfnvim.helpers.change_helpers")
+local config = require("perfnvim.config")
 
-local function setup()
-	vim.api.nvim_set_hl(0, constants.p4addSignHighlight, { fg = "Lime", bg = "NONE" })
-	vim.fn.sign_define(constants.p4addSignName, {
-		text = "+",
-		texthl = constants.p4addSignHighlight,
-	})
+local M = {}
 
-	vim.api.nvim_set_hl(0, constants.p4changeSignHighlight, { fg = "yellow", bg = "NONE" })
-	vim.fn.sign_define(constants.p4changeSignName, {
-		text = "~",
-		texthl = constants.p4changeSignHighlight,
-	})
+-- Module-level merged config, accessible by other modules.
+M.config = vim.deepcopy(constants.defaults)
 
-	vim.api.nvim_set_hl(0, constants.p4deleteSignHighlight, { fg = "red", bg = "NONE" })
-	vim.fn.sign_define(constants.p4deleteSignName, {
-		text = "_",
-		texthl = constants.p4deleteSignHighlight,
-	})
-	vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
+--- Deep merge user options into the defaults.
+--- Returns the merged table.
+local function merge_config(user_opts)
+	user_opts = user_opts or {}
+	local merged = vim.deepcopy(constants.defaults)
+	for k, v in pairs(user_opts) do
+		if type(v) == "table" and type(merged[k]) == "table" then
+			merged[k] = vim.tbl_deep_extend("force", merged[k], v)
+		else
+			merged[k] = v
+		end
+	end
+	return merged
+end
+
+--- Main setup function. Call once from init.lua or lazy.nvim config.
+function M.setup(user_opts)
+	M.config = merge_config(user_opts)
+
+	-- Override P4CONFIG filename if user specified one
+	if M.config.p4config_filename then
+		vim.env.P4CONFIG = M.config.p4config_filename
+	end
+
+	-- Sign definitions
+	if M.config.signs.enabled then
+		vim.api.nvim_set_hl(0, constants.p4addSignHighlight, { fg = "Lime", bg = "NONE" })
+		vim.fn.sign_define(constants.p4addSignName, {
+			text = "+",
+			texthl = constants.p4addSignHighlight,
+		})
+
+		vim.api.nvim_set_hl(0, constants.p4changeSignHighlight, { fg = "yellow", bg = "NONE" })
+		vim.fn.sign_define(constants.p4changeSignName, {
+			text = "~",
+			texthl = constants.p4changeSignHighlight,
+		})
+
+		vim.api.nvim_set_hl(0, constants.p4deleteSignHighlight, { fg = "red", bg = "NONE" })
+		vim.fn.sign_define(constants.p4deleteSignName, {
+			text = "_",
+			texthl = constants.p4deleteSignHighlight,
+		})
+
+		-- Annotate signs on file open and save
+		vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
+			pattern = "*",
+			callback = change_helpers._AnnotateSigns,
+		})
+	end
+
+	-- Invalidate P4CONFIG cache when entering a buffer in a different directory
+	vim.api.nvim_create_autocmd("BufEnter", {
 		pattern = "*",
-		callback = change_helpers._AnnotateSigns,
+		callback = function()
+			local buf_path = vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf())
+			if buf_path ~= "" then
+				local dir = vim.fn.fnamemodify(buf_path, ":p:h")
+				config.detect(dir) -- triggers detection for this workspace
+			end
+		end,
 	})
 end
 
-return {
-	setup = setup,
-}
+return M
