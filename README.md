@@ -31,8 +31,9 @@
 | Cross-platform bat/batcat previewer probe | ✅ Done |
 | Symlink / AltRoot-aware (`p4 diff` works from file directory) | ✅ Done |
 | `p4 info` result caching (3x fewer blocking calls on picker open) | ✅ Done |
-| P4CONFIG auto-detection (walk up, no manual setup) | 🔜 Phase 1 |
-| `:checkhealth perfnvim` diagnostics | 🔜 Phase 1 |
+| P4CONFIG auto-detection (walk up, no manual setup) | ✅ Done |
+| `:checkhealth perfnvim` diagnostics (8 checks) | ✅ Done |
+| Configurable `setup()` with user option merging | ✅ Done |
 | Zero blocking calls (all `p4` async) | 🔜 Phase 2 |
 | Revert / delete / submit / diff / describe | 🔜 Phase 3–4 |
 | Sync / annotate (blame) / shelve–unshelve | 🔜 Phase 3–4 |
@@ -90,7 +91,7 @@ Gutter signs appear automatically on `BufReadPost` and `BufWritePost` — no key
 | Phase | What | Status |
 |---|---|---|
 | 0 | Fork, audit, fix critical bugs (batcat, globals, shell pipeline) | ✅ Done |
-| 1 | P4CONFIG auto-detection, `:checkhealth` | 🔜 |
+| 1 | P4CONFIG auto-detection, `:checkhealth`, configurable setup | ✅ Done |
 | 2 | Async executor — zero blocking `p4` calls | 🔜 |
 | 3 | State management, sign debouncing, p4 info cache | 🔜 |
 | 4 | Complete p4 lifecycle: revert, delete, submit, diff, sync, annotate, shelve | 🔜 |
