@@ -4,6 +4,17 @@ local file_helpers = require("perfnvim.helpers.file_helpers")
 local helpers = require("perfnvim.helpers.other_helpers")
 local constants = require("perfnvim.constants")
 
+-- Probe for an available bat binary at module load time.
+-- batcat (Debian/Ubuntu) takes priority; bat is a fallback.
+-- Returns nil if neither is found — the telescope picker falls back
+-- to its built-in previewer.
+local bat_bin = nil
+if vim.fn.executable("batcat") == 1 then
+    bat_bin = "batcat"
+elseif vim.fn.executable("bat") == 1 then
+    bat_bin = "bat"
+end
+
 -- Function to list changelists and allow selection
 function M.SelectChangelistInteractively(action)
     -- Get all the different changelist numbers in current client
@@ -215,7 +226,11 @@ function M.GetP4Opened()
             sorter = conf.generic_sorter({}),
             previewer = previewers.new_termopen_previewer({
                 get_command = function(entry)
-                    return { "batcat", "--style=numbers", "--color=always", "--line-range=:500", entry.value }
+                    if bat_bin then
+                        return { bat_bin, "--style=numbers", "--color=always", "--line-range=:500", entry.value }
+                    end
+                    -- No bat available; telescope falls back to built-in previewer.
+                    return { "file", entry.value }
                 end,
             }),
             attach_mappings = function(_, map)
