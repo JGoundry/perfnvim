@@ -87,6 +87,14 @@ function M.setup(user_opts)
 					state.untrack_job(job_id)
 				end
 			end
+			-- Also check executor's own job tracking table
+			local executor = require("perfnvim.executor")
+			for job_id, job in pairs(executor.jobs) do
+				if job.buffer == bufnr then
+					pcall(vim.fn.jobstop, job_id)
+					executor.jobs[job_id] = nil
+				end
+			end
 		end,
 	})
 

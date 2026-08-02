@@ -98,8 +98,8 @@ function M.run(args, opts)
 				end
 			end
 		end,
-		on_exit = function(_, exit_code, _)
-			M.jobs[_] = nil
+		on_exit = function(job_id, exit_code, _)
+			M.jobs[job_id] = nil
 
 			-- Schedule callbacks on the main loop
 			vim.schedule(function()

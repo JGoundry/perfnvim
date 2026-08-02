@@ -97,6 +97,12 @@ end
 --- Cache keyed by start_path directory.
 function M.detect(start_path)
 	local filename = M._get_config_filename()
+
+	-- Check cache first
+	if detect_cache[start_path] then
+		return detect_cache[start_path]
+	end
+
 	local files = M._find_config_files(start_path, filename)
 
 	if #files == 0 then

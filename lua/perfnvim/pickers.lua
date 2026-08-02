@@ -19,6 +19,10 @@ end
 --- Displays files relative to client root. Preview uses bat if available.
 function M.opened()
 	local client_root = client_helpers._GetClientRoot()
+	if not client_root then
+		vim.notify("P4 client root not detected — are you in a P4 workspace?", vim.log.levels.WARN)
+		return
+	end
 	local files = file_helpers._GetP4OpenedPaths()
 
 	if #files == 0 then

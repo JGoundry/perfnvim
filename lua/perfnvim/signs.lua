@@ -111,7 +111,8 @@ function M.update(bufnr)
 		state.sign_timers[bufnr] = nil
 	end
 
-	local filepath = vim.fn.expand("%:p")
+	-- Get filepath for this specific buffer, not the current buffer
+	local filepath = vim.api.nvim_buf_get_name(bufnr)
 	local file_dir = vim.fn.fnamemodify(filepath, ":h")
 	local file_name = vim.fn.fnamemodify(filepath, ":t")
 
