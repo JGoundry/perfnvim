@@ -34,8 +34,8 @@
 | P4CONFIG auto-detection (walk up, no manual setup) | ✅ Done |
 | `:checkhealth perfnvim` diagnostics (8 checks) | ✅ Done |
 | Configurable `setup()` with user option merging | ✅ Done |
-| Zero blocking calls (all `p4` async) | 🔜 Phase 2 |
-| Revert / delete / submit / diff / describe | 🔜 Phase 3–4 |
+| Zero blocking calls (all `p4` async via executor) | ✅ Done |
+| Revert / delete / submit / diff / describe | 🔜 Phase 4 |
 | Sync / annotate (blame) / shelve–unshelve | 🔜 Phase 3–4 |
 | Customizable sign colours and debounce | 🔜 Phase 3 |
 
@@ -92,7 +92,7 @@ Gutter signs appear automatically on `BufReadPost` and `BufWritePost` — no key
 |---|---|---|
 | 0 | Fork, audit, fix critical bugs (batcat, globals, shell pipeline) | ✅ Done |
 | 1 | P4CONFIG auto-detection, `:checkhealth`, configurable setup | ✅ Done |
-| 2 | Async executor — zero blocking `p4` calls | 🔜 |
+| 2 | Async executor — zero blocking `p4` calls | ✅ Done |
 | 3 | State management, sign debouncing, p4 info cache | 🔜 |
 | 4 | Complete p4 lifecycle: revert, delete, submit, diff, sync, annotate, shelve | 🔜 |
 | 5 | UX polish: confirmation dialogs, notifications, error recovery | 🔜 |

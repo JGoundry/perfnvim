@@ -2,8 +2,9 @@
 -- Plugin setup: highlight groups, autocmds, sign definitions, and user config merging.
 
 local constants = require("perfnvim.constants")
-local change_helpers = require("perfnvim.helpers.change_helpers")
 local config = require("perfnvim.config")
+local signs = require("perfnvim.signs")
+local state = require("perfnvim.state")
 
 local M = {}
 
@@ -54,12 +55,40 @@ function M.setup(user_opts)
 			texthl = constants.p4deleteSignHighlight,
 		})
 
-		-- Annotate signs on file open and save
-		vim.api.nvim_create_autocmd({ "BufReadPost", "BufWritePost" }, {
+		-- Annotate signs on file open and save (debounced on save)
+		vim.api.nvim_create_autocmd("BufReadPost", {
 			pattern = "*",
-			callback = change_helpers._AnnotateSigns,
+			callback = function(args)
+				signs.update(args.buf)
+			end,
+		})
+		vim.api.nvim_create_autocmd("BufWritePost", {
+			pattern = "*",
+			callback = function(args)
+				signs.schedule_update(args.buf)
+			end,
 		})
 	end
+
+	-- Clean up jobs and timers when a buffer is closed
+	vim.api.nvim_create_autocmd("BufDelete", {
+		pattern = "*",
+		callback = function(args)
+			local bufnr = args.buf
+			-- Cancel pending sign timer
+			if state.sign_timers[bufnr] then
+				vim.fn.timer_stop(state.sign_timers[bufnr])
+				state.sign_timers[bufnr] = nil
+			end
+			-- Kill any active p4 diff jobs for this buffer
+			for job_id, job in pairs(state.jobs) do
+				if job.buffer == bufnr then
+					pcall(vim.fn.jobstop, job_id)
+					state.untrack_job(job_id)
+				end
+			end
+		end,
+	})
 
 	-- Invalidate P4CONFIG cache when entering a buffer in a different directory
 	vim.api.nvim_create_autocmd("BufEnter", {
