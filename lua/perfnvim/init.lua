@@ -34,6 +34,7 @@ function M.setup(opts)
 	vim.api.nvim_create_user_command("P4annotate", function() commands.Annotate() end, {})
 	vim.api.nvim_create_user_command("P4shelve", function() commands.Shelve() end, {})
 	vim.api.nvim_create_user_command("P4unshelve", function() commands.Unshelve() end, {})
+	vim.api.nvim_create_user_command("P4login", function() commands.Login() end, {})
 
 	setup.setup(opts)
 end
@@ -55,5 +56,6 @@ function M.P4sync() commands.Sync() end
 function M.P4annotate() commands.Annotate() end
 function M.P4shelve() commands.Shelve() end
 function M.P4unshelve() commands.Unshelve() end
+function M.P4login() commands.Login() end
 
 return M

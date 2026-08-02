@@ -630,4 +630,31 @@ function M.Unshelve()
 	})
 end
 
+--- p4 login flow. Prompts for password and authenticates.
+function M.Login()
+	local filepath = vim.api.nvim_buf_get_name(0)
+	local file_dir = filepath ~= "" and vim.fn.fnamemodify(filepath, ":h") or vim.fn.getcwd()
+
+	vim.ui.input({ prompt = "P4 password: " }, function(password)
+		if not password or password == "" then
+			notify.info("Login cancelled")
+			return
+		end
+
+		-- Write password to stdin via echo | p4 login
+		vim.fn.jobstart({ "sh", "-c", "echo " .. vim.fn.shellescape(password) .. " | p4 login" }, {
+			cwd = file_dir,
+			on_exit = function(_, exit_code)
+				vim.schedule(function()
+					if exit_code == 0 then
+						notify.info("P4 login successful")
+					else
+						notify.error("P4 login failed — check your password and P4PORT")
+					end
+				end)
+			end,
+		})
+	end)
+end
+
 return M
