@@ -20,7 +20,7 @@ local M = {}
 --- Map of p4 error substrings → friendly classification.
 --- Order matters: longer/more-specific patterns checked first.
 local ERROR_PATTERNS = {
-	{ "file(s) not opened on this client", "NOT_OPENED" },
+	{ "file%(s%) not opened on this client", "NOT_OPENED" },
 	{ "not under client",                  "NOT_IN_CLIENT" },
 	{ "is not under client's root",        "NOT_IN_CLIENT" },
 	{ "no such file",                      "NO_SUCH_FILE" },
@@ -29,8 +29,8 @@ local ERROR_PATTERNS = {
 	{ "login",                             "TICKET_EXPIRED" },
 	{ "connect",                           "CONNECT_FAILED" },
 	{ "Client .- unknown",                 "CLIENT_UNKNOWN" },
-	{ "File(s) not in client view",        "NOT_IN_CLIENT" },
-	{ "file(s) not on client",             "NOT_OPENED" },
+	{ "File%(s%) not in client view",      "NOT_IN_CLIENT" },
+	{ "file%(s%) not on client",           "NOT_OPENED" },
 }
 
 --- Active job tracking: { [job_id] = { buffer, label, started } }
