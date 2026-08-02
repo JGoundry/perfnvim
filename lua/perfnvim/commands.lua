@@ -70,17 +70,13 @@ function M.SelectChangelistInteractively(action)
 
     local win = vim.api.nvim_open_win(newbuf, true, opts)
 
-    -- Map <Enter> to select a changelist
-    vim.api.nvim_buf_set_keymap(
-        newbuf,
-        "n",
-        "<CR>",
-        ":lua select_changelist_entry()<CR>",
-        { noremap = true, silent = true }
-    )
+    -- Function to handle changelist selection.
+    -- Defined as a local so it closes over newbuf, win, filepath, action
+    -- without polluting _G.
+    local select_changelist_entry
+    local create_new_changelist
 
-    -- Function to handle selection
-    _G.select_changelist_entry = function()
+    select_changelist_entry = function()
         local line = vim.api.nvim_get_current_line()
         local changelist = line:match("Change (%d+)")
         if changelist then
@@ -111,21 +107,19 @@ function M.SelectChangelistInteractively(action)
                 end,
                 once = true,
             })
-            -- Map <Enter> to create a new changelist with the entered description
-            vim.api.nvim_buf_set_keymap(
-                newbuf,
-                "n",
-                "<CR>",
-                ":lua create_new_changelist()<CR>",
-                { noremap = true, silent = true }
-            )
+            -- Replace the keymap: now <CR> creates the new changelist
+            vim.keymap.set("n", "<CR>", create_new_changelist, {
+                buffer = newbuf,
+                noremap = true,
+                silent = true,
+            })
         else
             print("Error: you did not select a valid line.")
         end
     end
 
-    -- Function to create a new changelist
-    _G.create_new_changelist = function()
+    -- Function to create a new changelist from the buffer content
+    create_new_changelist = function()
         -- Get the description entered by the user
         local description = table.concat(vim.api.nvim_buf_get_lines(newbuf, 0, -1, false), "\n")
 
@@ -142,7 +136,7 @@ function M.SelectChangelistInteractively(action)
             p4ChangeHandle:close()
 
             -- Modify the changelist form with the desired description
-            changelist_form = changelist_form:gsub("(<enter description here.-)\n", description .. "\n")
+            changelist_form = changelist_form:gsub("(<enter description here.->)\n", description .. "\n")
 
             -- Write the modified form to the temporary file
             local file = io.open(tmpfile, "w")
@@ -180,6 +174,13 @@ function M.SelectChangelistInteractively(action)
             print("No description entered. Aborting creation of new changelist.")
         end
     end
+
+    -- Map <Enter> to select a changelist
+    vim.keymap.set("n", "<CR>", select_changelist_entry, {
+        buffer = newbuf,
+        noremap = true,
+        silent = true,
+    })
 end
 
 -- Create a Telescope picker for the p4 opened files
