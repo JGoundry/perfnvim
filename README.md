@@ -30,6 +30,7 @@
 | Telescope picker: grep across checked-out files (`rg`) | ✅ Done |
 | Cross-platform bat/batcat previewer probe | ✅ Done |
 | Symlink / AltRoot-aware (`p4 diff` works from file directory) | ✅ Done |
+| `p4 info` result caching (3x fewer blocking calls on picker open) | ✅ Done |
 | P4CONFIG auto-detection (walk up, no manual setup) | 🔜 Phase 1 |
 | `:checkhealth perfnvim` diagnostics | 🔜 Phase 1 |
 | Zero blocking calls (all `p4` async) | 🔜 Phase 2 |
