@@ -7,6 +7,7 @@ local M = {}
 
 local constants = require("perfnvim.constants")
 local state = require("perfnvim.state")
+local path_helper = require("perfnvim.helpers.path_helper")
 
 --- Place signs on a buffer.
 local function _place_signs(sign_group, sign_name, lines, bufnr)
@@ -113,8 +114,8 @@ function M.update(bufnr)
 
 	-- Get filepath for this specific buffer, not the current buffer
 	local filepath = vim.api.nvim_buf_get_name(bufnr)
-	local file_dir = vim.fn.fnamemodify(filepath, ":h")
-	local file_name = vim.fn.fnamemodify(filepath, ":t")
+	local file_dir = path_helper.dirname(filepath)
+	local file_name = path_helper.basename(filepath)
 
 	if filepath == "" or not file_name or file_name == "" then
 		return

@@ -6,6 +6,7 @@ local M = {}
 
 local client_helpers = require("perfnvim.helpers.client_helpers")
 local file_helpers = require("perfnvim.helpers.file_helpers")
+local path_helper = require("perfnvim.helpers.path_helper")
 
 -- Probe for bat/batcat at module load time
 local bat_bin = nil
@@ -36,10 +37,10 @@ function M.opened()
 	local previewers = require("telescope.previewers")
 	local conf = require("telescope.config").values
 
-	-- Transform files to be relative to client_root
+	-- Transform files to be relative to client_root (resolves symlinks)
 	local relative_files = {}
 	for _, file in ipairs(files) do
-		local relative_path = file:gsub("^" .. client_root .. "/", "")
+		local relative_path = path_helper.relative_to_root(file, client_root)
 		table.insert(relative_files, { full_path = file, relative_path = relative_path })
 	end
 

@@ -14,6 +14,7 @@
 local M = {}
 
 local config = require("perfnvim.config")
+local path_helper = require("perfnvim.helpers.path_helper")
 
 --- Format a successful check line.
 local function ok(msg)
@@ -112,15 +113,12 @@ function M.check()
 	local bufnr = vim.api.nvim_get_current_buf()
 	local filepath = vim.api.nvim_buf_get_name(bufnr)
 	if filepath ~= "" and validation.info.root then
-		-- Normalize paths for comparison
-		local normalized_file = vim.fn.fnamemodify(filepath, ":p"):gsub("/$", "")
-		local normalized_root = validation.info.root:gsub("/$", "")
-		if normalized_file:sub(1, #normalized_root) == normalized_root then
+		if path_helper.is_under_root(filepath, validation.info.root) then
 			ok("Current file is under P4 client root")
 		else
 			warn("Current file is outside the P4 client root — operations disabled")
-			warn("  File: " .. normalized_file)
-			warn("  Root: " .. normalized_root)
+			warn("  File: " .. path_helper.resolve(filepath))
+			warn("  Root: " .. path_helper.resolve(validation.info.root))
 		end
 	elseif filepath == "" then
 		info("No file in current buffer — open a file to check workspace membership")

@@ -10,6 +10,7 @@ local executor = require("perfnvim.executor")
 local notify = require("perfnvim.notify")
 local pickers = require("perfnvim.pickers")
 local helpers = require("perfnvim.helpers.other_helpers")
+local path_helper = require("perfnvim.helpers.path_helper")
 
 ----------------------------------------------------------------------
 -- Changelist selection (add / edit)
@@ -256,7 +257,7 @@ function M.Revert()
 	end
 
 	local ui = require("perfnvim.ui")
-	ui.confirm("Revert " .. vim.fn.fnamemodify(filepath, ":t") .. "?", {
+	ui.confirm("Revert " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
 			executor.run({ "revert", filepath }, {
 				label = "revert",
@@ -305,7 +306,7 @@ function M.Delete()
 	end
 
 	local ui = require("perfnvim.ui")
-	ui.confirm("Mark " .. vim.fn.fnamemodify(filepath, ":t") .. " for deletion?", {
+	ui.confirm("Mark " .. path_helper.basename(filepath) .. " for deletion?", {
 		on_confirm = function()
 			executor.run({ "delete", filepath }, {
 				label = "delete",
@@ -393,8 +394,8 @@ function M.Diff()
 		return
 	end
 
-	local file_dir = vim.fn.fnamemodify(filepath, ":h")
-	local file_name = vim.fn.fnamemodify(filepath, ":t")
+	local file_dir = path_helper.dirname(filepath)
+	local file_name = path_helper.basename(filepath)
 
 	vim.cmd("vsplit")
 	vim.cmd("enew")
@@ -550,7 +551,7 @@ function M.Shelve()
 	end
 
 	local ui = require("perfnvim.ui")
-	ui.confirm("Shelve changes for " .. vim.fn.fnamemodify(filepath, ":t") .. "?", {
+	ui.confirm("Shelve changes for " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
 			executor.run({ "shelve", "-f", filepath }, {
 				label = "shelve",
@@ -633,7 +634,7 @@ end
 --- p4 login flow. Prompts for password and authenticates.
 function M.Login()
 	local filepath = vim.api.nvim_buf_get_name(0)
-	local file_dir = filepath ~= "" and vim.fn.fnamemodify(filepath, ":h") or vim.fn.getcwd()
+	local file_dir = filepath ~= "" and path_helper.dirname(filepath) or vim.fn.getcwd()
 
 	vim.ui.input({ prompt = "P4 password: " }, function(password)
 		if not password or password == "" then
