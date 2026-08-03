@@ -5,6 +5,7 @@ local constants = require("perfnvim.constants")
 local config = require("perfnvim.config")
 local signs = require("perfnvim.signs")
 local state = require("perfnvim.state")
+local path_helper = require("perfnvim.helpers.path_helper")
 
 local M = {}
 
@@ -104,7 +105,7 @@ function M.setup(user_opts)
 		callback = function()
 			local buf_path = vim.api.nvim_buf_get_name(vim.api.nvim_get_current_buf())
 			if buf_path ~= "" then
-				local dir = vim.fn.fnamemodify(buf_path, ":p:h")
+				local dir = path_helper.dirname(buf_path)
 				config.detect(dir) -- triggers detection for this workspace
 			end
 		end,
