@@ -123,8 +123,8 @@ function M._create_new_changelist(action, filepath)
 	-- Show the form in a buffer for editing
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(changelist_form, "\n"))
-	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
-	vim.api.nvim_buf_set_option(buf, "modified", false)
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].modified = false
 
 	local width = math.floor(vim.o.columns * 0.8)
 	local height = math.floor(vim.o.lines * 0.7)
@@ -414,9 +414,9 @@ function M.Diff()
 		end,
 		on_exit = function()
 			vim.schedule(function()
-				vim.api.nvim_buf_set_option(diff_buf, "filetype", "diff")
-				vim.api.nvim_buf_set_option(diff_buf, "modified", false)
-			end)
+					vim.bo[diff_buf].filetype = "diff"
+					vim.bo[diff_buf].modified = false
+				end)
 		end,
 	})
 end
@@ -479,8 +479,8 @@ function M.Describe()
 						end,
 						on_exit = function()
 							vim.schedule(function()
-								vim.api.nvim_buf_set_option(buf, "filetype", "text")
-								vim.api.nvim_buf_set_option(buf, "modified", false)
+								vim.bo[buf].filetype = "text"
+								vim.bo[buf].modified = false
 							end)
 						end,
 					})
@@ -534,8 +534,8 @@ function M.Annotate()
 		end,
 		on_exit = function()
 			vim.schedule(function()
-				vim.api.nvim_buf_set_option(buf, "filetype", "text")
-				vim.api.nvim_buf_set_option(buf, "modified", false)
+				vim.bo[buf].filetype = "text"
+				vim.bo[buf].modified = false
 			end)
 		end,
 	})

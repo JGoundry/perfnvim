@@ -35,8 +35,8 @@ function M.select_list(items, opts)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, items)
 
 	-- Make buffer non-modifiable for selection mode
-	vim.api.nvim_buf_set_option(buf, "modifiable", false)
-	vim.api.nvim_buf_set_option(buf, "buftype", "nofile")
+	vim.bo[buf].modifiable = false
+	vim.bo[buf].buftype = "nofile"
 
 	local win = vim.api.nvim_open_win(buf, true, win_opts)
 
