@@ -45,6 +45,9 @@ function M.SelectChangelistInteractively(action)
 		return
 	end
 
+	-- Resolve symlinks for workspace root mismatch
+	local resolved = path_helper.resolve(filepath)
+
 	local client = client_helpers._GetClientName()
 	if not client then
 		notify.error("Could not determine P4 client. Is p4 configured?")
@@ -85,20 +88,20 @@ function M.SelectChangelistInteractively(action)
 						if not selected then return end
 
 						if selected.number == "default" then
-							executor.run({ action, filepath }, {
+							executor.run({ action, resolved }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
-										notify.info("p4 " .. action .. " " .. filepath .. " → default")
+										notify.info("p4 " .. action .. " " .. resolved .. " → default")
 									else
 										notify.error(table.concat(serr, "\n"), executor.classify(serr))
 									end
 								end,
 							})
 						elseif selected.number == "new" then
-							M._create_new_changelist(action, filepath)
+							M._create_new_changelist(action, resolved)
 						else
-							executor.run({ action, "-c", selected.number, filepath }, {
+							executor.run({ action, "-c", selected.number, resolved }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
@@ -269,7 +272,7 @@ function M.Revert()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Revert " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "revert", filepath }, {
+			executor.run({ "revert", path_helper.resolve(filepath) }, {
 				label = "revert",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -318,7 +321,7 @@ function M.Delete()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Mark " .. path_helper.basename(filepath) .. " for deletion?", {
 		on_confirm = function()
-			executor.run({ "delete", filepath }, {
+			executor.run({ "delete", path_helper.resolve(filepath) }, {
 				label = "delete",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -487,7 +490,8 @@ function M.Describe()
 	})
 end
 
---- Sync current file to head revision.
+--- Sync current file to head revision. Resolves symlinks so
+--- p4 sync sees the real path under the client root.
 function M.Sync()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -495,7 +499,7 @@ function M.Sync()
 		return
 	end
 
-	executor.run({ "sync", filepath }, {
+	executor.run({ "sync", path_helper.resolve(filepath) }, {
 		label = "sync",
 		on_exit = function(ec, stdout, serr)
 			if ec == 0 then
@@ -508,7 +512,7 @@ function M.Sync()
 	})
 end
 
---- Annotate (blame) current file. Opens in a vertical split.
+-- Annotate (blame) current file. Opens in a vertical split.
 function M.Annotate()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -522,9 +526,6 @@ function M.Annotate()
 	vim.cmd("vsplit")
 	vim.cmd("enew")
 	local buf = vim.api.nvim_get_current_buf()
-
-	-- Name the buffer after the original filename
-	vim.bo[buf].name = path_helper.basename(filepath) .. " (p4 annotate)"
 
 	vim.fn.jobstart({ "p4", "annotate", "-c", resolved }, {
 		stdout_buffered = true,
@@ -563,7 +564,7 @@ function M.Shelve()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Shelve changes for " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "shelve", "-f", filepath }, {
+			executor.run({ "shelve", "-f", path_helper.resolve(filepath) }, {
 				label = "shelve",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -688,8 +689,8 @@ function M.Health()
 	health.check()
 end
 
---- Show P4 status: login state, client, server, user.
---- Opens a floating window with key connection info.
+--- Show P4 status: connection, client, depot, port, user.
+--- Opens a floating window with a curated status view.
 function M.Info()
 	notify.info("Fetching P4 info...")
 
@@ -705,19 +706,49 @@ function M.Info()
 				end
 			end
 		end,
-		on_exit = function()
+		on_exit = function(_, exit_code)
 			vim.schedule(function()
-				if #stdout_lines == 0 then
-					notify.warn("No output from p4 info — is P4 configured?")
+				if exit_code ~= 0 then
+					notify.warn("p4 info failed — is P4 configured?")
 					return
 				end
+
+				-- Parse key fields from p4 info output
+				local info = {}
+				for _, line in ipairs(stdout_lines) do
+					local k, v = line:match("^([^:]+):%s*(.*)$")
+					if k and v then
+						info[k:gsub("%s+$", "")] = v:gsub("^%s+", ""):gsub("%s+$", "")
+					end
+				end
+
+				-- Build curated status display
+				local user = info["User name"] or "unknown"
+				local client = info["Client name"] or "unknown"
+				local port = info["Server address"] or "unknown"
+				local root = info["Client root"] or "unknown"
+				local depot = root:match("^.*/([^/]+)$") or root -- last path segment as depot hint
+				local connected = exit_code == 0
+
+				local lines = {
+					"",
+					"  Status:    " .. (connected and "✅ connected" or "❌ disconnected"),
+					"  User:      " .. user,
+					"  Client:    " .. client,
+					"  Port:      " .. port,
+					"  Depot:     " .. depot,
+					"  Root:      " .. root,
+					"",
+					"  [q] close",
+				}
+
 				local buf = vim.api.nvim_create_buf(false, true)
-				vim.api.nvim_buf_set_lines(buf, 0, -1, false, stdout_lines)
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 				vim.bo[buf].filetype = "text"
 				vim.bo[buf].modified = false
 
-				local width = math.floor(vim.o.columns * 0.7)
-				local height = math.min(#stdout_lines, 20)
+				local width = 60
+				local height = #lines
 				vim.api.nvim_open_win(buf, true, {
 					relative = "editor",
 					width = width,
@@ -726,7 +757,7 @@ function M.Info()
 					row = math.floor((vim.o.lines - height) / 2),
 					style = "minimal",
 					border = "single",
-					title = "P4 Info",
+					title = " P4 Status ",
 					title_pos = "center",
 				})
 
