@@ -16,7 +16,7 @@ function M._GetP4Info()
 	-- Execute the 'p4 info' command and capture the output
 	local handle = io.popen("p4 info")
 	if not handle then
-		print("Failed to run p4 command")
+		vim.notify("perfnvim: Failed to run p4 info", vim.log.levels.ERROR)
 		return
 	end
 	local result = handle:read("*a")
@@ -31,7 +31,7 @@ function M._GetClientRoot()
 		local client_root = result:match("Client root:%s*(.-)\n")
 		return client_root
 	else
-		print("Cannot obtain client root from p4 info")
+		vim.notify("perfnvim: Cannot obtain client root from p4 info", vim.log.levels.WARN)
 		return
 	end
 end
@@ -42,7 +42,7 @@ function M._GetClientName()
 		local client_name = result:match("Client name:%s*(.-)\n")
 		return client_name
 	else
-		print("Cannot obtain client name from p4 info")
+		vim.notify("perfnvim: Cannot obtain client name from p4 info", vim.log.levels.WARN)
 		return
 	end
 end
@@ -53,7 +53,7 @@ function M._GetClientStream()
 		local client_stream = result:match("Client stream:%s*(.-)\n")
 		return client_stream
 	else
-		print("Cannot obtain client stream from p4 info")
+		vim.notify("perfnvim: Cannot obtain client stream from p4 info", vim.log.levels.WARN)
 		return
 	end
 end

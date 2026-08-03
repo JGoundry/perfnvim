@@ -5,7 +5,7 @@ local M = {}
 function M._GetP4OpenedPaths()
 	local client_root = client_helpers._GetClientRoot()
 	if not client_root then
-		print("Failed to get client root")
+		vim.notify("perfnvim: Failed to get client root", vim.log.levels.WARN)
 		return {}
 	end
 	local client_stream = client_helpers._GetClientStream()
@@ -15,7 +15,7 @@ function M._GetP4OpenedPaths()
 	-- formats and breaks when client_stream contains special chars.
 	local handle = io.popen("p4 opened -s")
 	if not handle then
-		print("Failed to run p4 opened command")
+		vim.notify("perfnvim: Failed to run p4 opened", vim.log.levels.ERROR)
 		return {}
 	end
 	local result = handle:read("*a")
