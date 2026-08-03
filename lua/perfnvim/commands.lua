@@ -12,6 +12,28 @@ local pickers = require("perfnvim.pickers")
 local helpers = require("perfnvim.helpers.other_helpers")
 local path_helper = require("perfnvim.helpers.path_helper")
 
+--- Parse p4 changelists output into {number, description, display} list.
+--- @param stdout table Lines from `p4 changelists`
+--- @return table List of {number, description, display}
+local function parse_changelists(stdout)
+	local list = {}
+	for _, line in ipairs(stdout) do
+		local num = line:match("Change (%d+)")
+		if num then
+			local desc = line:match("%*pending%* '(.-)'$")
+				or line:match("pending '(.-)'$")
+				or line:match("'(.-)'$") -- shelved changelists
+				or ""
+			table.insert(list, {
+				number = num,
+				description = desc,
+				display = "Change " .. num .. ": " .. desc,
+			})
+		end
+	end
+	return list
+end
+
 ----------------------------------------------------------------------
 -- Changelist selection (add / edit)
 ----------------------------------------------------------------------
@@ -41,23 +63,8 @@ function M.SelectChangelistInteractively(action)
 					return
 				end
 
-				-- Parse changelist numbers from output
-				-- Format: "Change 42 on 2024/01/01 by user@client *pending* 'description'"
-				local changelists = {}
-				for _, line in ipairs(stdout) do
-					local num = line:match("Change (%d+)")
-					if num then
-						-- Extract description
-						local desc = line:match("%*pending%* '(.-)'$")
-							or line:match("pending '(.-)'$")
-							or ""
-						table.insert(changelists, {
-							number = num,
-							description = desc,
-							display = string.format("Change %s: %s", num, desc),
-						})
-					end
-				end
+				-- Parse changelists using shared helper
+				local changelists = parse_changelists(stdout)
 
 				table.insert(changelists, { number = "default", description = "Default changelist",
 					display = "Default" })
@@ -146,8 +153,8 @@ function M._create_new_changelist(action, filepath)
 		local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
 		local form = table.concat(lines, "\n")
 
-		-- Write to temp file
-		local tmpfile = os.tmpname()
+		-- Write changelist spec to temp file
+		local tmpfile = vim.fn.tempname()
 		local f = io.open(tmpfile, "w")
 		if not f then
 			notify.error("Failed to create temporary file for changelist")
@@ -156,10 +163,13 @@ function M._create_new_changelist(action, filepath)
 		f:write(form)
 		f:close()
 
-		-- Submit via p4 change -i
-		local h = io.popen("p4 change -i < " .. tmpfile)
-		local result = h:read("*a")
-		h:close()
+		-- Pipe to p4 change -i (shellescape protects against path chars)
+		local handle = io.popen("p4 change -i < " .. vim.fn.shellescape(tmpfile) .. " 2>&1")
+		local result = ""
+		if handle then
+			result = handle:read("*a")
+			handle:close()
+		end
 		os.remove(tmpfile)
 
 		vim.api.nvim_win_close(win, true)
@@ -339,14 +349,7 @@ function M.Submit()
 				return
 			end
 
-			local cl_list = {}
-			for _, line in ipairs(stdout) do
-				local num = line:match("Change (%d+)")
-				if num then
-					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
-					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
-				end
-			end
+			local cl_list = parse_changelists(stdout)
 
 			if #cl_list == 0 then
 				notify.info("No pending changelists to submit")
@@ -438,14 +441,7 @@ function M.Describe()
 				return
 			end
 
-			local cl_list = {}
-			for _, line in ipairs(stdout) do
-				local num = line:match("Change (%d+)")
-				if num then
-					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
-					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
-				end
-			end
+			local cl_list = parse_changelists(stdout)
 
 			if #cl_list == 0 then
 				notify.info("No pending changelists")
@@ -598,14 +594,7 @@ function M.Unshelve()
 				return
 			end
 
-			local cl_list = {}
-			for _, line in ipairs(stdout) do
-				local num = line:match("Change (%d+)")
-				if num then
-					local desc = line:match("%*pending%* '(.-)'$") or line:match("pending '(.-)'$") or ""
-					table.insert(cl_list, { number = num, display = "Change " .. num .. ": " .. desc })
-				end
-			end
+			local cl_list = parse_changelists(stdout)
 
 			if #cl_list == 0 then
 				notify.info("No shelved changelists found")
@@ -646,7 +635,7 @@ function M.Unshelve()
 end
 
 --- p4 login flow. Uses inputsecret for password masking.
---- Pipes password to p4 login via temp file for security.
+--- Pipes password directly to p4 login via job stdin (never touches disk).
 function M.Login()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	local file_dir = filepath ~= "" and path_helper.dirname(filepath) or vim.fn.getcwd()
@@ -658,19 +647,11 @@ function M.Login()
 		return
 	end
 
-	-- Pipe password securely via temp file (not echo, which exposes
-	-- the password in process listings).
-	local tmpfile = vim.fn.tempname()
-	local f = io.open(tmpfile, "w")
-	if not f then
-		notify.error("Failed to create temporary file")
-		return
-	end
-	f:write(password)
-	f:close()
-
-	vim.fn.jobstart({ "sh", "-c", "p4 login < " .. tmpfile .. " && rm -f " .. tmpfile .. " 2>/dev/null" }, {
+	-- Pipe password directly to p4 login stdin — never written to disk
+	local job_id = vim.fn.jobstart({ "p4", "login" }, {
 		cwd = file_dir,
+		stdout_buffered = true,
+		stderr_buffered = true,
 		on_stdout = function(_, data)
 			if data then
 				vim.schedule(function()
@@ -685,25 +666,26 @@ function M.Login()
 				end)
 			end
 		end,
-		on_exit = function(_, exit_code)
-			if exit_code ~= 0 then
-				-- Clean up temp file on failure (rm might have run already)
-				os.remove(tmpfile)
-			end
-		end,
 	})
+
+	if job_id > 0 then
+		vim.fn.chansend(job_id, password .. "\n")
+		vim.fn.chanclose(job_id, "stdin")
+	else
+		notify.error("Failed to start p4 login process")
+	end
 end
 
---- Run :checkhealth perfnvim inline (explicitly, bypassing rtp discovery).
---- Registers as :P4health for convenience.
+--- Run :checkhealth perfnvim inline (calls health.check() directly).
+--- Registers as :P4health. This bypasses rtp discovery so it works
+--- even when lazy.nvim's :checkhealth can't find the module.
 function M.Health()
 	local ok, health = pcall(require, "perfnvim.health")
 	if not ok then
 		notify.error("Health module not found: " .. tostring(health))
 		return
 	end
-	-- Delegate to the standard health check
-	vim.cmd("checkhealth perfnvim")
+	health.check()
 end
 
 --- Show P4 status: login state, client, server, user.
@@ -711,18 +693,31 @@ end
 function M.Info()
 	notify.info("Fetching P4 info...")
 
+	local stdout_lines = {}
+
 	vim.fn.jobstart({ "p4", "info" }, {
 		stdout_buffered = true,
+		stderr_buffered = true,
 		on_stdout = function(_, data)
-			if not data then return end
+			if data then
+				for _, line in ipairs(data) do
+					table.insert(stdout_lines, line)
+				end
+			end
+		end,
+		on_exit = function()
 			vim.schedule(function()
+				if #stdout_lines == 0 then
+					notify.warn("No output from p4 info — is P4 configured?")
+					return
+				end
 				local buf = vim.api.nvim_create_buf(false, true)
-				vim.api.nvim_buf_set_lines(buf, 0, -1, false, data)
-				vim.api.nvim_buf_set_option(buf, "filetype", "text")
-				vim.api.nvim_buf_set_option(buf, "modified", false)
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, stdout_lines)
+				vim.bo[buf].filetype = "text"
+				vim.bo[buf].modified = false
 
 				local width = math.floor(vim.o.columns * 0.7)
-				local height = math.min(#data, 20)
+				local height = math.min(#stdout_lines, 20)
 				vim.api.nvim_open_win(buf, true, {
 					relative = "editor",
 					width = width,
@@ -735,7 +730,7 @@ function M.Info()
 					title_pos = "center",
 				})
 
-				vim.api.nvim_buf_set_keymap(buf, "n", "q", ":close<CR>", { noremap = true, silent = true })
+				vim.keymap.set("n", "q", ":close<CR>", { buffer = buf, noremap = true, silent = true })
 			end)
 		end,
 		on_stderr = function(_, data)
