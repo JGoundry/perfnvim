@@ -1,24 +1,30 @@
 local M = {}
 
 -- Get the opened Perforce file paths as LOCAL filesystem paths.
--- Runs p4 opened to list depot paths, then resolves them via p4 where
--- (the only reliable cross-version depot→local mapping).
+--
+-- The correct approach (used by P4V/P4VS internally):
+--   1. p4 opened → list of depot paths
+--   2. p4 -x <file> fstat -T clientFile → resolved local paths via workspace
+--   3. Parse "... clientFile /local/path" lines
+--
+-- This is the only reliable cross-version, cross-workspace-type mapping.
+-- Streams, classic depots, AltRoots, overlays — all handled by the server.
 function M._GetP4OpenedPaths()
-	-- Get all opened depot paths
+	-- Collect depot paths from p4 opened
 	local handle = io.popen("p4 opened 2>&1")
 	if not handle then
 		vim.notify("perfnvim: Failed to run p4 opened", vim.log.levels.ERROR)
 		return {}
 	end
-	local result = handle:read("*a")
+	local opened_output = handle:read("*a")
 	handle:close()
 
 	-- Extract depot paths (strip #rev suffix)
 	local depot_paths = {}
-	for line in result:gmatch("[^\r\n]+") do
+	for line in opened_output:gmatch("[^\r\n]+") do
 		local depot = line:match("^(%S+)")
 		if depot then
-			depot = depot:gsub("#%d+$", "")
+			depot = depot:gsub("#%d+$", "") -- strip revision
 			table.insert(depot_paths, depot)
 		end
 	end
@@ -27,40 +33,42 @@ function M._GetP4OpenedPaths()
 		return {}
 	end
 
-	-- Resolve depot paths → local paths via p4 where.
-	-- Write depot paths to a temp file, feed to p4 -x.
-	local tmpfile = os.tmpname()
+	-- Write depot paths to a temp file for p4 -x
+	local tmpfile = vim.fn.tempname()
 	local f = io.open(tmpfile, "w")
 	if not f then
-		return depot_paths -- fallback
+		return depot_paths -- fallback: return depot paths so picker still works
 	end
 	f:write(table.concat(depot_paths, "\n"))
 	f:close()
 
-	local where_handle = io.popen("p4 -x " .. tmpfile .. " where 2>&1")
-	if not where_handle then
+	-- Resolve all depot paths to local paths in a single p4 call.
+	-- p4 -x <file> fstat -T clientFile:
+	--   Reads depot paths from <file>, outputs only clientFile fields.
+	--   "... clientFile /home/user/workspace/src/file.py"
+	local fstat_handle = io.popen("p4 -x " .. tmpfile .. " fstat -T clientFile 2>&1")
+	if not fstat_handle then
 		os.remove(tmpfile)
 		return depot_paths -- fallback
 	end
-	local where_output = where_handle:read("*a")
-	where_handle:close()
+	local fstat_output = fstat_handle:read("*a")
+	fstat_handle:close()
 	os.remove(tmpfile)
 
-	-- p4 where output per line: "depot_path client_path local_path"
-	-- e.g. "//depot/main/file.py //client/main/file.py /home/user/file.py"
-	-- The third whitespace-delimited field is the local path.
+	-- Parse clientFile paths
 	local files = {}
-	for line in where_output:gmatch("[^\r\n]+") do
-		-- Skip error lines from p4
-		if not line:match("^[%s/]*$") and not line:match("not in client") and not line:match("not under") then
-			-- Match the third field: skip depot_path, skip client_path, capture local_path
-			local local_path = line:match("^%S+%s+%S+%s+(.+)$")
-			if local_path then
-				-- Strip trailing newlines/spaces
-				local_path = local_path:match("^(.-)%s*$")
-				table.insert(files, local_path)
-			end
+	for line in fstat_output:gmatch("[^\r\n]+") do
+		local local_path = line:match("^%.%.%. clientFile (.+)$")
+		if local_path then
+			table.insert(files, local_path)
 		end
+	end
+
+	-- If nothing resolved, fall back to depot paths so the picker
+	-- at least shows something (user can see what's open even if
+	-- the preview might not work).
+	if #files == 0 then
+		return depot_paths
 	end
 
 	return files
