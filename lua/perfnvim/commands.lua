@@ -520,16 +520,30 @@ function M.Annotate()
 		return
 	end
 
+	-- Resolve symlinks so p4 annotate sees the real path under client root
+	local resolved = path_helper.resolve(filepath)
+
 	vim.cmd("vsplit")
 	vim.cmd("enew")
 	local buf = vim.api.nvim_get_current_buf()
 
-	vim.fn.jobstart({ "p4", "annotate", "-c", filepath }, {
+	-- Name the buffer after the original filename
+	vim.bo[buf].name = path_helper.basename(filepath) .. " (p4 annotate)"
+
+	vim.fn.jobstart({ "p4", "annotate", "-c", resolved }, {
 		stdout_buffered = true,
-		on_stdout = function(_, data, _)
+		stderr_buffered = true,
+		on_stdout = function(_, data)
 			if data then
 				vim.schedule(function()
 					vim.api.nvim_buf_set_lines(buf, -1, -1, false, data)
+				end)
+			end
+		end,
+		on_stderr = function(_, data)
+			if data then
+				vim.schedule(function()
+					notify.error("p4 annotate: " .. table.concat(data, " "))
 				end)
 			end
 		end,
@@ -631,31 +645,107 @@ function M.Unshelve()
 	})
 end
 
---- p4 login flow. Prompts for password and authenticates.
+--- p4 login flow. Uses inputsecret for password masking.
+--- Pipes password to p4 login via temp file for security.
 function M.Login()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	local file_dir = filepath ~= "" and path_helper.dirname(filepath) or vim.fn.getcwd()
 
-	vim.ui.input({ prompt = "P4 password: " }, function(password)
-		if not password or password == "" then
-			notify.info("Login cancelled")
-			return
-		end
+	-- Use inputsecret for password masking (shows asterisks)
+	local password = vim.fn.inputsecret("P4 password: ")
+	if password == "" then
+		notify.info("Login cancelled")
+		return
+	end
 
-		-- Write password to stdin via echo | p4 login
-		vim.fn.jobstart({ "sh", "-c", "echo " .. vim.fn.shellescape(password) .. " | p4 login" }, {
-			cwd = file_dir,
-			on_exit = function(_, exit_code)
+	-- Pipe password securely via temp file (not echo, which exposes
+	-- the password in process listings).
+	local tmpfile = vim.fn.tempname()
+	local f = io.open(tmpfile, "w")
+	if not f then
+		notify.error("Failed to create temporary file")
+		return
+	end
+	f:write(password)
+	f:close()
+
+	vim.fn.jobstart({ "sh", "-c", "p4 login < " .. tmpfile .. " && rm -f " .. tmpfile .. " 2>/dev/null" }, {
+		cwd = file_dir,
+		on_stdout = function(_, data)
+			if data then
 				vim.schedule(function()
-					if exit_code == 0 then
-						notify.info("P4 login successful")
-					else
-						notify.error("P4 login failed — check your password and P4PORT")
-					end
+					notify.info("P4 login: " .. table.concat(data, " "))
 				end)
-			end,
-		})
-	end)
+			end
+		end,
+		on_stderr = function(_, data)
+			if data then
+				vim.schedule(function()
+					notify.error("P4 login failed: " .. table.concat(data, " "))
+				end)
+			end
+		end,
+		on_exit = function(_, exit_code)
+			if exit_code ~= 0 then
+				-- Clean up temp file on failure (rm might have run already)
+				os.remove(tmpfile)
+			end
+		end,
+	})
+end
+
+--- Run :checkhealth perfnvim inline (explicitly, bypassing rtp discovery).
+--- Registers as :P4health for convenience.
+function M.Health()
+	local ok, health = pcall(require, "perfnvim.health")
+	if not ok then
+		notify.error("Health module not found: " .. tostring(health))
+		return
+	end
+	-- Delegate to the standard health check
+	vim.cmd("checkhealth perfnvim")
+end
+
+--- Show P4 status: login state, client, server, user.
+--- Opens a floating window with key connection info.
+function M.Info()
+	notify.info("Fetching P4 info...")
+
+	vim.fn.jobstart({ "p4", "info" }, {
+		stdout_buffered = true,
+		on_stdout = function(_, data)
+			if not data then return end
+			vim.schedule(function()
+				local buf = vim.api.nvim_create_buf(false, true)
+				vim.api.nvim_buf_set_lines(buf, 0, -1, false, data)
+				vim.api.nvim_buf_set_option(buf, "filetype", "text")
+				vim.api.nvim_buf_set_option(buf, "modified", false)
+
+				local width = math.floor(vim.o.columns * 0.7)
+				local height = math.min(#data, 20)
+				vim.api.nvim_open_win(buf, true, {
+					relative = "editor",
+					width = width,
+					height = height,
+					col = math.floor((vim.o.columns - width) / 2),
+					row = math.floor((vim.o.lines - height) / 2),
+					style = "minimal",
+					border = "single",
+					title = "P4 Info",
+					title_pos = "center",
+				})
+
+				vim.api.nvim_buf_set_keymap(buf, "n", "q", ":close<CR>", { noremap = true, silent = true })
+			end)
+		end,
+		on_stderr = function(_, data)
+			if data then
+				vim.schedule(function()
+					notify.error("p4 info: " .. table.concat(data, " "))
+				end)
+			end
+		end,
+	})
 end
 
 return M
