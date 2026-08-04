@@ -19,10 +19,10 @@ function M._GetP4OpenedPaths()
 	local opened_output = handle:read("*a")
 	handle:close()
 
-	-- Extract depot paths (strip #rev suffix)
+	-- Extract depot paths (must start with //, strip #rev suffix)
 	local depot_paths = {}
 	for line in opened_output:gmatch("[^\r\n]+") do
-		local depot = line:match("^(%S+)")
+		local depot = line:match("^(//%S+)")
 		if depot then
 			depot = depot:gsub("#%d+$", "") -- strip revision
 			table.insert(depot_paths, depot)

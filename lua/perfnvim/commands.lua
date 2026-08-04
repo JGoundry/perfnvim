@@ -45,9 +45,6 @@ function M.SelectChangelistInteractively(action)
 		return
 	end
 
-	-- Resolve symlinks for workspace root mismatch
-	local resolved = path_helper.resolve(filepath)
-
 	local client = client_helpers._GetClientName()
 	if not client then
 		notify.error("Could not determine P4 client. Is p4 configured?")
@@ -88,20 +85,20 @@ function M.SelectChangelistInteractively(action)
 						if not selected then return end
 
 						if selected.number == "default" then
-							executor.run({ action, resolved }, {
+							executor.run({ action, filepath }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
-										notify.info("p4 " .. action .. " " .. resolved .. " → default")
+										notify.info("p4 " .. action .. " " .. filepath .. " → default")
 									else
 										notify.error(table.concat(serr, "\n"), executor.classify(serr))
 									end
 								end,
 							})
 						elseif selected.number == "new" then
-							M._create_new_changelist(action, resolved)
+							M._create_new_changelist(action, filepath)
 						else
-							executor.run({ action, "-c", selected.number, resolved }, {
+							executor.run({ action, "-c", selected.number, filepath }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
@@ -272,7 +269,7 @@ function M.Revert()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Revert " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "revert", path_helper.resolve(filepath) }, {
+			executor.run({ "revert", filepath }, {
 				label = "revert",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -321,7 +318,7 @@ function M.Delete()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Mark " .. path_helper.basename(filepath) .. " for deletion?", {
 		on_confirm = function()
-			executor.run({ "delete", path_helper.resolve(filepath) }, {
+			executor.run({ "delete", filepath }, {
 				label = "delete",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -490,8 +487,8 @@ function M.Describe()
 	})
 end
 
---- Sync current file to head revision. Resolves symlinks so
---- p4 sync sees the real path under the client root.
+--- Sync current file to head revision. Passes raw buffer path —
+--- p4 handles symlink workspaces natively.
 function M.Sync()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -499,7 +496,7 @@ function M.Sync()
 		return
 	end
 
-	executor.run({ "sync", path_helper.resolve(filepath) }, {
+	executor.run({ "sync", filepath }, {
 		label = "sync",
 		on_exit = function(ec, stdout, serr)
 			if ec == 0 then
@@ -564,7 +561,7 @@ function M.Shelve()
 	local ui = require("perfnvim.ui")
 	ui.confirm("Shelve changes for " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "shelve", "-f", path_helper.resolve(filepath) }, {
+			executor.run({ "shelve", "-f", filepath }, {
 				label = "shelve",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
