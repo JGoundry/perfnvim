@@ -45,6 +45,9 @@ function M.SelectChangelistInteractively(action)
 		return
 	end
 
+	-- Resolve symlinks so the path matches the real client root
+	local resolved = path_helper.resolve(filepath)
+
 	local client = client_helpers._GetClientName()
 	if not client then
 		notify.error("Could not determine P4 client. Is p4 configured?")
@@ -85,20 +88,20 @@ function M.SelectChangelistInteractively(action)
 						if not selected then return end
 
 						if selected.number == "default" then
-							executor.run({ action, filepath }, {
+							executor.run({ action, resolved }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
-										notify.info("p4 " .. action .. " " .. filepath .. " → default")
+										notify.info("p4 " .. action .. " " .. resolved .. " → default")
 									else
 										notify.error(table.concat(serr, "\n"), executor.classify(serr))
 									end
 								end,
 							})
 						elseif selected.number == "new" then
-							M._create_new_changelist(action, filepath)
+							M._create_new_changelist(action, resolved)
 						else
-							executor.run({ action, "-c", selected.number, filepath }, {
+							executor.run({ action, "-c", selected.number, resolved }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
@@ -258,7 +261,7 @@ end
 -- Phase 4: Complete p4 lifecycle commands
 ----------------------------------------------------------------------
 
---- Revert current buffer. Confirms before reverting.
+--- Revert current buffer. Resolves symlinks so p4 sees the real path.
 function M.Revert()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -266,10 +269,12 @@ function M.Revert()
 		return
 	end
 
+	local resolved = path_helper.resolve(filepath)
+
 	local ui = require("perfnvim.ui")
 	ui.confirm("Revert " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "revert", filepath }, {
+			executor.run({ "revert", resolved }, {
 				label = "revert",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -307,7 +312,7 @@ function M.RevertUnchanged()
 	})
 end
 
---- Mark current buffer for deletion.
+--- Mark current buffer for deletion. Resolves symlinks.
 function M.Delete()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -315,10 +320,12 @@ function M.Delete()
 		return
 	end
 
+	local resolved = path_helper.resolve(filepath)
+
 	local ui = require("perfnvim.ui")
 	ui.confirm("Mark " .. path_helper.basename(filepath) .. " for deletion?", {
 		on_confirm = function()
-			executor.run({ "delete", filepath }, {
+			executor.run({ "delete", resolved }, {
 				label = "delete",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -487,8 +494,8 @@ function M.Describe()
 	})
 end
 
---- Sync current file to head revision. Passes raw buffer path —
---- p4 handles symlink workspaces natively.
+--- Sync current file to head revision. Resolves symlinks so
+--- p4 sees the real path under the real client root.
 function M.Sync()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -496,7 +503,7 @@ function M.Sync()
 		return
 	end
 
-	executor.run({ "sync", filepath }, {
+	executor.run({ "sync", path_helper.resolve(filepath) }, {
 		label = "sync",
 		on_exit = function(ec, stdout, serr)
 			if ec == 0 then
@@ -550,7 +557,7 @@ function M.Annotate()
 	})
 end
 
---- Shelve current changelist.
+--- Shelve current changelist. Resolves symlinks.
 function M.Shelve()
 	local filepath = vim.api.nvim_buf_get_name(0)
 	if filepath == "" then
@@ -558,10 +565,12 @@ function M.Shelve()
 		return
 	end
 
+	local resolved = path_helper.resolve(filepath)
+
 	local ui = require("perfnvim.ui")
 	ui.confirm("Shelve changes for " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "shelve", "-f", filepath }, {
+			executor.run({ "shelve", "-f", resolved }, {
 				label = "shelve",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
