@@ -24,9 +24,9 @@ end
 --- Get path of current buffer with symlinks preserved where possible
 --- @return string
 function M.current_buf_path()
-    local relative_path = vim.api.expand("%:.")
+    local relative_path = vim.fn.expand("%:.")
     if relative_path == "" then
-        return vim.api.expand('%')
+        return vim.fn.expand('%')
     end
     return vim.env.PWD .. '/' .. relative_path
 end
