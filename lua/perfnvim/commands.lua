@@ -39,14 +39,11 @@ end
 ----------------------------------------------------------------------
 
 function M.SelectChangelistInteractively(action)
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file associated with the current buffer.")
 		return
 	end
-
-	-- Resolve symlinks so the path matches the real client root
-	local resolved = path_helper.resolve(filepath)
 
 	local client = client_helpers._GetClientName()
 	if not client then
@@ -88,20 +85,20 @@ function M.SelectChangelistInteractively(action)
 						if not selected then return end
 
 						if selected.number == "default" then
-							executor.run({ action, resolved }, {
+							executor.run({ action, filepath }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
-										notify.info("p4 " .. action .. " " .. resolved .. " → default")
+										notify.info("p4 " .. action .. " " .. filepath .. " → default")
 									else
 										notify.error(table.concat(serr, "\n"), executor.classify(serr))
 									end
 								end,
 							})
 						elseif selected.number == "new" then
-							M._create_new_changelist(action, resolved)
+							M._create_new_changelist(action, filepath)
 						else
-							executor.run({ action, "-c", selected.number, resolved }, {
+							executor.run({ action, "-c", selected.number, filepath }, {
 								label = action,
 								on_exit = function(ec, _, serr)
 									if ec == 0 then
@@ -263,18 +260,16 @@ end
 
 --- Revert current buffer. Resolves symlinks so p4 sees the real path.
 function M.Revert()
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file in current buffer")
 		return
 	end
 
-	local resolved = path_helper.resolve(filepath)
-
 	local ui = require("perfnvim.ui")
 	ui.confirm("Revert " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "revert", resolved }, {
+			executor.run({ "revert", filepath }, {
 				label = "revert",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -314,18 +309,16 @@ end
 
 --- Mark current buffer for deletion. Resolves symlinks.
 function M.Delete()
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file in current buffer")
 		return
 	end
 
-	local resolved = path_helper.resolve(filepath)
-
 	local ui = require("perfnvim.ui")
 	ui.confirm("Mark " .. path_helper.basename(filepath) .. " for deletion?", {
 		on_confirm = function()
-			executor.run({ "delete", resolved }, {
+			executor.run({ "delete", filepath }, {
 				label = "delete",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then
@@ -497,13 +490,13 @@ end
 --- Sync current file to head revision. Resolves symlinks so
 --- p4 sees the real path under the real client root.
 function M.Sync()
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file in current buffer")
 		return
 	end
 
-	executor.run({ "sync", path_helper.resolve(filepath) }, {
+	executor.run({ "sync", filepath }, {
 		label = "sync",
 		on_exit = function(ec, stdout, serr)
 			if ec == 0 then
@@ -518,20 +511,17 @@ end
 
 -- Annotate (blame) current file. Opens in a vertical split.
 function M.Annotate()
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file in current buffer")
 		return
 	end
 
-	-- Resolve symlinks so p4 annotate sees the real path under client root
-	local resolved = path_helper.resolve(filepath)
-
 	vim.cmd("vsplit")
 	vim.cmd("enew")
 	local buf = vim.api.nvim_get_current_buf()
 
-	vim.fn.jobstart({ "p4", "annotate", "-c", resolved }, {
+	vim.fn.jobstart({ "p4", "annotate", "-u", "-c", filepath }, {
 		stdout_buffered = true,
 		stderr_buffered = true,
 		on_stdout = function(_, data)
@@ -559,18 +549,16 @@ end
 
 --- Shelve current changelist. Resolves symlinks.
 function M.Shelve()
-	local filepath = vim.api.nvim_buf_get_name(0)
+	local filepath = path_helper.current_buf_path()
 	if filepath == "" then
 		notify.warn("No file in current buffer")
 		return
 	end
 
-	local resolved = path_helper.resolve(filepath)
-
 	local ui = require("perfnvim.ui")
 	ui.confirm("Shelve changes for " .. path_helper.basename(filepath) .. "?", {
 		on_confirm = function()
-			executor.run({ "shelve", "-f", resolved }, {
+			executor.run({ "shelve", "-f", filepath }, {
 				label = "shelve",
 				on_exit = function(ec, _, serr)
 					if ec == 0 then

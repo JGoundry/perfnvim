@@ -21,6 +21,16 @@ function M.resolve(path)
 	return resolved
 end
 
+--- Get path of current buffer with symlinks preserved where possible
+--- @return string
+function M.current_buf_path()
+    local relative_path = vim.api.expand("%:.")
+    if relative_path == "" then
+        return vim.api.expand('%')
+    end
+    return vim.env.PWD .. '/' .. relative_path
+end
+
 --- Check whether a file path is under a given client root,
 --- after resolving symlinks on both sides.
 --- @param filepath string
